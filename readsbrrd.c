@@ -20,116 +20,155 @@
 #include "readsbrrd.h"
 #include "readsb.pb-c.h"
 
+
 static int readsbrrd_exit = 0;
 static uint8_t *read_buf;
+
 static error_t parse_opt(int key, char *arg, struct argp_state *state);
+
 const char *argp_program_version = "readsbrrd v1.0.0";
 const char doc[] = "readsbrrd - Readsb Round Robin Database statistics collector.";
 const char args_doc[] = "";
-static struct argp argp = {options, parse_opt, args_doc, doc, NULL, NULL, NULL};
-static sem_t* stats_semptr = NULL;
+
+static struct argp argp = {
+	options,
+	parse_opt,
+	args_doc,
+	doc,
+	NULL,
+	NULL,
+	NULL
+};
+
+static sem_t *stats_semptr = NULL;
+
 
 /*
  * Order and file names must correspond with rrd_file_type_t.
  */
 static struct {
-    const char *name;
-    const char *ds;
+	const char *name;
+	const char *ds;
 } rrd_files[] = {
-    {"dbfs_signal.rrd", "DS:value:GAUGE:%d:U:0"},
-    {"dbfs_noise.rrd", "DS:value:GAUGE:%d:U:0"},
-    {"dbfs_min_signal.rrd", "DS:value:GAUGE:%d:U:0"},
-    {"dbfs_quart1.rrd", "DS:value:GAUGE:%d:U:0"},
-    {"dbfs_median.rrd", "DS:value:GAUGE:%d:U:0"},
-    {"dbfs_quart3.rrd", "DS:value:GAUGE:%d:U:0"},
-    {"dbfs_max_signal.rrd", "DS:value:GAUGE:%d:U:0"},
-    {"messages_local_accepted.rrd", "DS:value:DERIVE:%d:0:U"},
-    {"messages_remote_accepted.rrd", "DS:value:DERIVE:%d:0:U"},
-    {"messages_strong_signals.rrd", "DS:value:DERIVE:%d:0:U"},
-    {"messages_positions.rrd", "DS:value:DERIVE:%d:0:U"},
-    {"tracks_all.rrd", "DS:value:DERIVE:%d:0:U"},
-    {"tracks_single_message.rrd", "DS:value:DERIVE:%d:0:U"},
-    {"cpu_demod.rrd", "DS:value:DERIVE:%d:0:U"},
-    {"cpu_reader.rrd", "DS:value:DERIVE:%d:0:U"},
-    {"cpu_background.rrd", "DS:value:DERIVE:%d:0:U"},
-    {"range_min.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"range_quart1.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"range_median.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"range_quart3.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"range_max.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"aircraft_total.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"aircraft_positions.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"aircraft_mlat.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"aircraft_tisb.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"aircraft_gps.rrd", "DS:value:GAUGE:%d:0:U"},
-    {"memory-total.rrd", "DS:value:GAUGE:%d:0:281474976710656"},
-    {"memory-free.rrd", "DS:value:GAUGE:%d:0:281474976710656"},
-    {"memory-used.rrd", "DS:value:GAUGE:%d:0:281474976710656"},
-    {"memory-cached.rrd", "DS:value:GAUGE:%d:0:281474976710656"},
-    {"memory-buffered.rrd", "DS:value:GAUGE:%d:0:281474976710656"},
-    {NULL, NULL}
+	{ "dbfs_signal.rrd", "DS:value:GAUGE:%d:U:0" },
+	{ "dbfs_noise.rrd", "DS:value:GAUGE:%d:U:0" },
+	{ "dbfs_min_signal.rrd", "DS:value:GAUGE:%d:U:0" },
+    { "dbfs_quart1.rrd", "DS:value:GAUGE:%d:U:0" },
+    { "dbfs_median.rrd", "DS:value:GAUGE:%d:U:0" },
+    { "dbfs_quart3.rrd", "DS:value:GAUGE:%d:U:0" },
+    { "dbfs_max_signal.rrd", "DS:value:GAUGE:%d:U:0" },
+    { "messages_local_accepted.rrd", "DS:value:DERIVE:%d:0:U" },
+    { "messages_remote_accepted.rrd", "DS:value:DERIVE:%d:0:U" },
+    { "messages_strong_signals.rrd", "DS:value:DERIVE:%d:0:U" },
+    { "messages_positions.rrd", "DS:value:DERIVE:%d:0:U" },
+    { "tracks_all.rrd", "DS:value:DERIVE:%d:0:U" },
+    { "tracks_single_message.rrd", "DS:value:DERIVE:%d:0:U" },
+    { "cpu_demod.rrd", "DS:value:DERIVE:%d:0:U" },
+    { "cpu_reader.rrd", "DS:value:DERIVE:%d:0:U" },
+    { "cpu_background.rrd", "DS:value:DERIVE:%d:0:U" },
+    { "range_min.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "range_quart1.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "range_median.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "range_quart3.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "range_max.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "aircraft_total.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "aircraft_positions.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "aircraft_mlat.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "aircraft_tisb.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "aircraft_gps.rrd", "DS:value:GAUGE:%d:0:U" },
+    { "memory-total.rrd", "DS:value:GAUGE:%d:0:281474976710656" },
+    { "memory-free.rrd", "DS:value:GAUGE:%d:0:281474976710656" },
+    { "memory-used.rrd", "DS:value:GAUGE:%d:0:281474976710656" },
+    { "memory-cached.rrd", "DS:value:GAUGE:%d:0:281474976710656" },
+    { "memory-buffered.rrd", "DS:value:GAUGE:%d:0:281474976710656" },
+    { NULL, NULL }
 };
 
 const char *rra[] = {
-    // 1 day, 1 minute resolution
-    "RRA:AVERAGE:0.5:1:1440",
-    "RRA:MAX:0.5:1:1440",
-    "RRA:MIN:0.5:1:1440",
-    // 7 days, 15 minutes resolution
-    "RRA:AVERAGE:0.5:15:672",
-    "RRA:MAX:0.5:15:672",
-    "RRA:MIN:0.5:15:672",
-    // 1 month, 60 minutes resolution
-    "RRA:AVERAGE:0.5:60:744",
-    "RRA:MAX:0.5:60:744",
-    "RRA:MIN:0.5:60:744",
-    // 1 year, 6 hours resolution
-    "RRA:AVERAGE:0.5:360:1460",
-    "RRA:MAX:0.5:360:1460",
-    "RRA:MIN:0.5:360:1460",
-    NULL
+	/* 1 day, 1 minute resolution */
+	"RRA:AVERAGE:0.5:1:1440",
+	"RRA:MAX:0.5:1:1440",
+	"RRA:MIN:0.5:1:1440",
+#if !defined(RRA_USE_ALT_PERIODS)
+	/* 7 days, 15 minutes resolution */
+	"RRA:AVERAGE:0.5:15:672",
+	"RRA:MAX:0.5:15:672",
+	"RRA:MIN:0.5:15:672",
+#else
+	/* 15 days, 20 minute resolution */
+	"RRA:AVERAGE:0.5:20:1080",
+	"RRA:MAX:0.5:20:1080",
+	"RRA:MIN:0.5:20:1080"
+#endif
+#if !defined(RRA_USE_ALT_PERIODS)
+	/* 1 month, 60 minutes resolution */
+	"RRA:AVERAGE:0.5:60:744",
+	"RRA:MAX:0.5:60:744",
+	"RRA:MIN:0.5:60:744",
+#else
+	/* 3 months (90 days), 2 hour resolution */
+	"RRA:AVERAGE:0.5:120:1080",
+	"RRA:MAX:0.5:120:1080",
+	"RRA:MIN:0.5:120:1080",
+#endif
+	/* 1 year, 6 hours resolution */
+	"RRA:AVERAGE:0.5:360:1460",
+	"RRA:MAX:0.5:360:1460",
+	"RRA:MIN:0.5:360:1460",
+	/* ------------------------- */
+	NULL
 };
 
 static rrd_struct rrd;
 
+
+
 /**
- * Signal handler
- * @param sig Signal number we got.
+ * \brief Signal handler
+ *
+ * \param sig Signal number we got.
  */
 static void signal_handler(int sig) {
-    signal(sig, SIG_DFL); // Reset signal handler
-    readsbrrd_exit = 1;
-    fprintf(stderr, "caught signal %s, shutting down..\n", strsignal(sig));
+	signal(sig, SIG_DFL); // Reset signal handler
+	readsbrrd_exit = 1;
+	fprintf(stderr, "caught signal %s, shutting down..\n", strsignal(sig));
 }
 
 /**
- * Command line option parser.
- * @param key Option key.
- * @param argc number of command line arguments.
- * @param argv command line arguments.
- * @param state PArsing state.
- * @return Command line options have error, or not.
+ * \brief Command line option parser.
+ *
+ * \param key Option key.
+ * \param argc number of command line arguments.
+ * \param argv command line arguments.
+ * \param state PArsing state.
+ *
+ * \return Command line options have error, or not.
  */
 static error_t parse_opt(int key, char *arg, struct argp_state *state) {
-    switch (key) {
-        case OPT_RRD_DIR:
-            rrd.path = strndup(arg, PATH_MAX);
-            break;
-        case OPT_RRD_STEP:
-            rrd.step = (uint32_t) strtol(arg, NULL, 10);
-            if (rrd.step == 0) {
-                rrd.step = DS_STEP;
-            }
-            break;
-        case ARGP_KEY_END:
-            if (state->arg_num > 0)
-                /* We use only options but no arguments */
-                argp_usage(state);
-            break;
-        default:
-            return ARGP_ERR_UNKNOWN;
-    }
-    return 0;
+	switch (key) {
+		case OPT_RRD_DIR:
+			rrd.path = strndup(arg, PATH_MAX);
+			break;
+
+		case OPT_RRD_STEP:
+			rrd.step = (uint32_t)strtol(arg, NULL, 10);
+			if (rrd.step == 0) {
+				rrd.step = DS_STEP;
+			}
+			break;
+
+		case ARGP_KEY_END:
+			if (state->arg_num > 0) {
+				/* We use only options but no arguments */
+				argp_usage(state);
+			}
+			break;
+
+		default:
+			return ARGP_ERR_UNKNOWN;
+	}
+
+	return 0;
 }
 
 /**
@@ -137,11 +176,12 @@ static error_t parse_opt(int key, char *arg, struct argp_state *state) {
  * @param code Exit code.
  */
 static void cleanup_and_exit(int code) {
-    sem_close(stats_semptr);
-    free(rrd.path);
-    for (int i = 0; i < MAX_RRD_ARGV; i++)
-        free(rrd.argv[i]);
-    exit(code);
+	sem_close(stats_semptr);
+	free(rrd.path);
+	for (int i = 0; i < MAX_RRD_ARGV; i++) {
+		free(rrd.argv[i]);
+	}
+	exit(code);
 }
 
 /**
@@ -150,42 +190,45 @@ static void cleanup_and_exit(int code) {
  * @param buf Meminfo output.
  * @return Value of name
  */
-static long get_meminfo_entry(const char* name, const char* buf) {
-    char* hit = strstr(buf, name);
-    if (hit == NULL) {
-        return -1;
-    }
+static long get_meminfo_entry(const char *name, const char *buf) {
+	char *hit = strstr(buf, name);
+	if (hit == NULL) {
+		return -1;
+	}
 
-    errno = 0;
-    long val = strtol(hit + strlen(name) + 1, NULL, 10);
-    if (errno != 0) {
-        fprintf(stderr, "cannot get meminfo entry %s: strtol() failed\n", name);
-        return -1;
-    }
-    return val;
+	errno = 0;
+	long val = strtol(hit + strlen(name) + 1, NULL, 10);
+	if (errno != 0) {
+		fprintf(stderr, "cannot get meminfo entry %s: strtol() failed\n", name);
+		return -1;
+	}
+
+	return val;
 }
 
 /**
  * Init rrd structure.
  */
 static void rrd_init() {
-    int i;
+	int i;
 
-    rrd.path = strdup(DEFAULT_RRD_PATH);
-    rrd.status = 0;
-    rrd.time_update = 0;
-    rrd.step = DS_STEP;
-    for (i = 0; i < MAX_RRD_ARGV; i++) {
-        rrd.argv[i] = (char *) malloc(256);
-    }
-    // Special case for path and file name
-    free(rrd.argv[1]);
-    rrd.argv[1] = (char *) malloc(PATH_MAX);
+	rrd.path = strdup(DEFAULT_RRD_PATH);
+	rrd.status = 0;
+	rrd.time_update = 0;
+	rrd.step = DS_STEP;
+	for (i = 0; i < MAX_RRD_ARGV; i++) {
+		rrd.argv[i] = (char*)malloc(256);
+	}
+
+	// Special case for path and file name
+	free(rrd.argv[1]);
+	rrd.argv[1] = (char*)malloc(PATH_MAX);
 }
 
 /**
- * Create rrd files but not overwrite if existing.
- * @return Status.
+ * \brief Create rrd files but not overwrite if existing.
+ *
+ * \return Status.
  */
 static int rrd_create_files() {
     struct stat st;
@@ -222,13 +265,15 @@ static int rrd_create_files() {
             rrd_clear_error();
         }
     }
+
     return 0;
 }
 
 /**
- * Update value in rrd file.
- * @param type Type of rrd file.
- * @param value Update value.
+ * \brief Update value in rrd file.
+ *
+ * \param type Type of rrd file.
+ * \param value Update value.
  */
 static void rrd_update_file(rrd_file_type_t type, float value) {
     rrd.argc = 0;
@@ -239,13 +284,13 @@ static void rrd_update_file(rrd_file_type_t type, float value) {
     snprintf(rrd.argv[2], 256, "%" PRIu64 ":%.0f", rrd.time_update, value);
     rrd.argc += 1;
     rrd.argv[3] = NULL;
-    
+
     // System time must be at least one second in future than last RRD timestamp.
     if ((uint64_t)rrd_last_r(rrd.argv[1]) >= rrd.time_update) {
         fprintf(stderr, "error system time in past compared to last entry in %s.\n", rrd_files[type].name);
         return;
     }
-    
+
     rrd.status = rrd_update(rrd.argc, rrd.argv);
     if (rrd_test_error()) {
         fprintf(stderr, "%s\n", rrd_get_error());
@@ -253,8 +298,16 @@ static void rrd_update_file(rrd_file_type_t type, float value) {
     }
 }
 
+
 /**
- * Update rrd files with system informations.
+ * \brief The size of the buffer to hold the data from /proc/meminfo
+ *
+ * \note The average size of \c /proc/meminfo on Linux is \b 1400 bytes, so this should be adequate for future growth...
+ */
+#define MEMINFO_BUF_SIZE (4096)
+
+/**
+ * \brief Update rrd files with system informations.
  */
 static void update_from_system() {
     // Read system memory info
@@ -270,9 +323,8 @@ static void update_from_system() {
         return;
     }
 
-    // meminfo is about 1400 bytes on Linux, so should be enough for future.
-    char *buf = (char *) malloc(4096);
-    if (read(fd, buf, 4096) == 0) {
+    char *buf = (char*)malloc(MEMINFO_BUF_SIZE);
+    if (read(fd, buf, MEMINFO_BUF_SIZE) == 0) {
         fprintf(stderr, "cannot read file /proc/meminfo: %s\n", strerror(errno));
         close(fd);
         return;
@@ -295,8 +347,9 @@ static void update_from_system() {
 }
 
 /**
- * Read and process readsb stats.pb file.
- * @param file_name Absolute path and file name.
+ * \brief Read and process readsb stats.pb file.
+ *
+ * \param[in]	file_name	Absolute path and file name of the \c stats.pb file
  */
 static void update_from_stats(const char *file_name) {
     struct stat st;
@@ -316,7 +369,7 @@ static void update_from_stats(const char *file_name) {
         return;
     }
 
-    read_buf = (uint8_t *) malloc(file_size);
+    read_buf = (uint8_t*)malloc(file_size);
     if (read_buf == NULL) {
         fprintf(stderr, "unable to allocated read buffer for %s\n", file_name);
         close(fd);
@@ -339,61 +392,75 @@ static void update_from_stats(const char *file_name) {
 
     // Overwrite update time from stats entry if exists, otherwise use unix epoch.
     rrd.time_update = stats_msg->last_1min->stop;
-    rrd_update_file(DBFS_SIGNAL, (float) (stats_msg->last_1min->local_signal));
-    rrd_update_file(DBFS_NOISE, (float) (stats_msg->last_1min->local_noise));
+    rrd_update_file(DBFS_SIGNAL, (float)(stats_msg->last_1min->local_signal));
+    rrd_update_file(DBFS_NOISE, (float)(stats_msg->last_1min->local_noise));
     rrd_update_file(MSG_STRONG_SIGNALS, stats_msg->total->local_strong_signals);
-    rrd_update_file(MSG_POSITIONS, (float) (stats_msg->total->cpr_local_ok + stats_msg->total->cpr_global_ok));
-    rrd_update_file(TRACKS_ALL, (float) (stats_msg->total->tracks_new));
-    rrd_update_file(TRACKS_SINGLE_MSG, (float) (stats_msg->total->tracks_single_message));
-    rrd_update_file(CPU_DEMOD, (float) (stats_msg->total->cpu_demod));
-    rrd_update_file(CPU_READER, (float) (stats_msg->total->cpu_reader));
-    rrd_update_file(CPU_BACKGROUND, (float) (stats_msg->total->cpu_background));
-    rrd_update_file(MSG_LOCAL_ACCEPTED, (float) (stats_msg->total->local_accepted));
-    rrd_update_file(MSG_REMOTE_ACCEPTED, (float) (stats_msg->total->remote_accepted));
+    rrd_update_file(MSG_POSITIONS, (float)(stats_msg->total->cpr_local_ok + stats_msg->total->cpr_global_ok));
+    rrd_update_file(TRACKS_ALL, (float)(stats_msg->total->tracks_new));
+    rrd_update_file(TRACKS_SINGLE_MSG, (float)(stats_msg->total->tracks_single_message));
+    rrd_update_file(CPU_DEMOD, (float)(stats_msg->total->cpu_demod));
+    rrd_update_file(CPU_READER, (float)(stats_msg->total->cpu_reader));
+    rrd_update_file(CPU_BACKGROUND, (float)(stats_msg->total->cpu_background));
+    rrd_update_file(MSG_LOCAL_ACCEPTED, (float)(stats_msg->total->local_accepted));
+    rrd_update_file(MSG_REMOTE_ACCEPTED, (float)(stats_msg->total->remote_accepted));
 
     statistics__free_unpacked(stats_msg, NULL);
 }
 
 /**
- * Compare two float numbers for qsort.
- * @param a First float number.
- * @param b Second float number.
- * @return Comparision result.
+ * \brief Compare two float numbers for qsort.
+ *
+ * \param a First float number.
+ * \param b Second float number.
+ *
+ * \return Comparision result.
+ * \retval	0	The values of \p a and \p b are equal
+ * \retval	-1	The value of \p a is \e less than the value of \p b
+ * \retval	1	The value of \p a is \e greater than the value of \p b
  */
-static int compare_float(const void* a, const void* b) {
-    float val_a = *((float*) a);
-    float val_b = *((float*) b);
+static int compare_float(const void *a, const void *b) {
+	float val_a = *((float*)a);
+	float val_b = *((float*)b);
 
-    if (val_a == val_b) return 0;
-    else if (val_a < val_b) return -1;
-    else return 1;
+	if (val_a == val_b) {
+		return 0;
+	} else if (val_a < val_b) {
+		return -1;
+	} else {
+		return 1;
+	}
 }
 
 /**
- * Caluclate given percentile from array of floats.
- * @param p Percentile to calculate, range 0-1.
- * @param values Array of float numbers.
- * @param l Length of array.
- * @return The percentile.
+ * \brief Caluclate given percentile from array of floats.
+ *
+ * \param	p		Percentile to calculate, range 0-1.
+ * \param	values	Array of float numbers.
+ * \param	l		Length of array.
+ *
+ * \return The calculated percentile.
  */
-static float percentile(float p, float* values, size_t l) {
-    float res = 0.0f;
-    float x = p * (l - 1);
-    float d = x - (int) x;
-    unsigned y = (unsigned) x;
-    if (y + 1 < l) {
-        res = values[y] + d * (values[y + 1] - values[y]);
-    } else {
-        res = values[y];
-    }
-    return res;
+static float percentile(float p, float *values, size_t l) {
+	float res = 0.0f;
+	float x = p * (l - 1);
+	float d = x - (int)x;
+	unsigned y = (unsigned)x;
+
+	if (y + 1 < l) {
+		res = values[y] + d * (values[y + 1] - values[y]);
+	} else {
+		res = values[y];
+	}
+
+	return res;
 }
 
 /**
- * Read and process readsb aircraft.pb file.
- * @param file_name Absolute path and file name.
+ * \brief Read and process readsb aircraft.pb file.
+ *
+ * \param[in]	file_name	Absolute path and file name of \c aircraft.pb file
  */
-static void update_from_aircrafts(const char* file_name) {
+static void update_from_aircrafts(const char *file_name) {
     struct stat st;
     off_t file_size = 0;
     float min = 0;
@@ -472,6 +539,7 @@ static void update_from_aircrafts(const char* file_name) {
             if ((aircrafts_msg->aircraft[a]->messages > 3) && (seen < 30) && (aircrafts_msg->aircraft[a]->rssi > -50.0)) {
                 signals[a] = aircrafts_msg->aircraft[a]->rssi;
             }
+
             // Get distances.
             distances[a] = (float) aircrafts_msg->aircraft[a]->distance;
 
@@ -497,6 +565,7 @@ static void update_from_aircrafts(const char* file_name) {
         }
 
         aircrafts_update__free_unpacked(aircrafts_msg, NULL);
+
         // Sort signals and distances ascending.
         qsort(signals, n_aircraft, sizeof (float), compare_float);
         qsort(distances, n_aircraft, sizeof (float), compare_float);
@@ -539,30 +608,38 @@ static void update_from_aircrafts(const char* file_name) {
 }
 
 /**
- * This is readsbrrd.
- * @param argc Start arguments count.
- * @param argv Start arguments.
- * @return 
+ * \brief This is readsbrrd.
+ *
+ * \param[in]	argc	The number of arguments presented on the commandline at program start
+ * \param[in]	argv	Pointer to an array of the arguments presented on the commandline at programs start
+ *
+ * \return An indication of whether program execution terminated in a \e normal or \e abnormal manner.
+ * \retval	EXIT_SUCCESS	The program terminated in a \e normal manner
+ * \retval	2				The program terminated \e abnormally due to improper argments
+ * \retval	4				The program terminated \e abnormally due to issues creating the \b rrd files or the stats
+ *							semaphore
  */
-int main(int argc, char** argv) {
-    struct timespec ts;
-    int semcnt, r;
-    char stats_file_path[PATH_MAX];
-    char aircrafts_file_path[PATH_MAX];
-    snprintf(stats_file_path, PATH_MAX, "%s/stats.pb", DEFAULT_READSB_RUN_PATH);
-    snprintf(aircrafts_file_path, PATH_MAX, "%s/aircraft.pb", DEFAULT_READSB_RUN_PATH);
+int main(int argc, char *argv[]) {
+	struct timespec ts;
+	int semcnt;
+	int r;
+	char stats_file_path[PATH_MAX];
+	char aircrafts_file_path[PATH_MAX];
 
-    // signal handlers:
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-    signal(SIGABRT, signal_handler);
+	snprintf(stats_file_path, PATH_MAX, "%s/stats.pb", DEFAULT_READSB_RUN_PATH);
+	snprintf(aircrafts_file_path, PATH_MAX, "%s/aircraft.pb", DEFAULT_READSB_RUN_PATH);
 
-    rrd_init();
+	// signal handlers:
+	signal(SIGINT, signal_handler);
+	signal(SIGTERM, signal_handler);
+	signal(SIGABRT, signal_handler);
 
-    // Parse the command line options
-    if (argp_parse(&argp, argc, argv, 0, 0, 0)) {
-        cleanup_and_exit(2);
-    }
+	rrd_init();
+
+	// Parse the command line options
+	if (argp_parse(&argp, argc, argv, 0, 0, 0)) {
+		cleanup_and_exit(2);
+	}
 
     // Create rrd files if they not exist, we do not overwrite.
     if (rrd_create_files() != 0) {
@@ -580,15 +657,17 @@ int main(int argc, char** argv) {
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += (__time_t) (rrd.step * 1.5);
         r = sem_getvalue(stats_semptr, &semcnt);
+
         // Avoid frequent updates when more than one event is queued in semaphore.
         // Update only one very last event.
-        if (r == 0 && semcnt == 0) {
+        if ((r == 0) && (semcnt == 0)) {
             // Get update time as unix epoch
             rrd.time_update = (uint64_t)time(NULL);
             update_from_system();
             update_from_stats(stats_file_path);
             update_from_aircrafts(aircrafts_file_path);
         }
+
         // Wait for new statistic from readsb process, or read anyway on timeout.
         r = sem_timedwait(stats_semptr, &ts);
         if (r != 0) {
@@ -597,5 +676,6 @@ int main(int argc, char** argv) {
     }
 
     cleanup_and_exit(EXIT_SUCCESS);
+
     return (EXIT_SUCCESS);
 }
